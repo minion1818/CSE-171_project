@@ -9,52 +9,116 @@
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
+const int BALL_SIZE = 20;
+const int BULLET_SIZE = 5;
+const int INITIAL_USER_SPEED = 5;
+const int BULLET_SPEED = 10;
+bool gameOver = false;
 
 int ballPosX = WINDOW_WIDTH / 2;
 int ballPosY = WINDOW_HEIGHT / 2;
 int ballVelX = 0, ballVelY = 0;
-const int BALL_SIZE = 20;
-const int INITIAL_USER_SPEED = 5;
-
-struct Circle {
-    int posX;
-    int posY;
-    int velX;
-    int velY;
-    const int size = 30;
-    float speed;
-};
 
 bool upPressed = false;
 bool downPressed = false;
 bool leftPressed = false;
 bool rightPressed = false;
+bool spacePressed = false;
+
+struct Bullet {
+    int x, y;
+    int velX, velY;
+};
+
+std::vector<Bullet> bullets;
+
+struct Asteroid {
+    int x, y;
+    int velX, velY;
+    int size;
+};
+
+std::vector<Asteroid> asteroids;
 
 bool checkCollision(int x1, int y1, int size1, int x2, int y2, int size2) {
-    int radius1 = size1 / 2;
-    int radius2 = size2 / 2;
     int dx = x1 - x2;
     int dy = y1 - y2;
-    int distanceSquared = dx * dx + dy * dy;
-    return distanceSquared < (radius1 + radius2) * (radius1 + radius2);
+    float distance = sqrt(dx * dx + dy * dy);
+    return distance < (size1 / 2 + size2 / 2);
 }
 
-void handleCircleCollision(Circle& c1, Circle& c2) {
-    int dx = c1.posX - c2.posX;
-    int dy = c1.posY - c2.posY;
-    float distance = sqrt(dx * dx + dy * dy);
+void restartGame() {
+    // Reset player position and velocity
+    ballPosX = WINDOW_WIDTH / 2;
+    ballPosY = WINDOW_HEIGHT / 2;
+    ballVelX = 0;
+    ballVelY = 0;
 
-    if (distance < c1.size / 2 + c2.size / 2) {
-        c1.velX = -c1.velX;
-        c1.velY = -c1.velY;
-        c2.velX = -c2.velX;
-        c2.velY = -c2.velY;
+    // Reinitialize asteroids (random positions and velocities)
+    srand(static_cast<unsigned int>(time(0))); // Reseed for new positions
+    asteroids.clear();
+    for (int i = 0; i < 5; ++i) {
+        asteroids.push_back({rand() % WINDOW_WIDTH, rand() % WINDOW_HEIGHT, rand() % 3 - 1, rand() % 3 - 1, 30});
+    }
 
-        float overlap = (c1.size / 2 + c2.size / 2) - distance;
-        c1.posX += (dx / distance) * overlap / 2;
-        c1.posY += (dy / distance) * overlap / 2;
-        c2.posX -= (dx / distance) * overlap / 2;
-        c2.posY -= (dy / distance) * overlap / 2;
+    // Reset bullets
+    bullets.clear();
+
+    gameOver = false;
+    std::cout << "Game Restarted!" << std::endl;
+}
+
+void fireBullet() {
+    Bullet newBullet;
+    newBullet.x = ballPosX + BALL_SIZE / 2 - BULLET_SIZE / 2; // Spawn at the center of the player
+    newBullet.y = ballPosY;
+    newBullet.velX = 0;
+    newBullet.velY = BULLET_SPEED;
+
+    // If moving up or down, fire accordingly
+    if (upPressed) {
+        newBullet.velY = -BULLET_SPEED;
+    } else if (downPressed) {
+        newBullet.velY = BULLET_SPEED;
+    }
+
+    bullets.push_back(newBullet);
+}
+
+void moveAsteroids() {
+    for (auto& asteroid : asteroids) {
+        asteroid.x += asteroid.velX;
+        asteroid.y += asteroid.velY;
+
+        // Wrap asteroids around screen edges
+        if (asteroid.x < 0) asteroid.x = WINDOW_WIDTH;
+        if (asteroid.x > WINDOW_WIDTH) asteroid.x = 0;
+        if (asteroid.y < 0) asteroid.y = WINDOW_HEIGHT;
+        if (asteroid.y > WINDOW_HEIGHT) asteroid.y = 0;
+    }
+}
+
+void checkGameOver() {
+    // Check for collision between the player and asteroids
+    for (const auto& asteroid : asteroids) {
+        if (checkCollision(ballPosX, ballPosY, BALL_SIZE, asteroid.x, asteroid.y, asteroid.size)) {
+            gameOver = true;
+            std::cout << "Game Over!" << std::endl;
+        }
+    }
+}
+
+void checkBulletCollisions() {
+    for (size_t i = 0; i < bullets.size(); ++i) {
+        for (size_t j = 0; j < asteroids.size(); ++j) {
+            if (checkCollision(bullets[i].x, bullets[i].y, BULLET_SIZE, asteroids[j].x, asteroids[j].y, asteroids[j].size)) {
+                // Remove asteroid and bullet if collision occurs
+                asteroids.erase(asteroids.begin() + j);
+                bullets.erase(bullets.begin() + i);
+                i--;  // Adjust index due to bullet removal
+                break; // Exit loop after one collision is handled
+            }
+        }
     }
 }
 
@@ -98,16 +162,9 @@ int main(int argc, char* argv[]) {
 
     srand(static_cast<unsigned int>(time(0)));
 
-    std::vector<Circle> circles;
-
+    // Initialize asteroids
     for (int i = 0; i < 5; ++i) {
-        Circle circle;
-        circle.posX = rand() % WINDOW_WIDTH;
-        circle.posY = rand() % WINDOW_HEIGHT;
-        circle.velX = (rand() % 2 == 0 ? 1 : -1) * (rand() % 2 + 1);
-        circle.velY = (rand() % 2 == 0 ? 1 : -1) * (rand() % 2 + 1);
-        circle.speed = 0.5f;
-        circles.push_back(circle);
+        asteroids.push_back({rand() % WINDOW_WIDTH, rand() % WINDOW_HEIGHT, rand() % 3 - 1, rand() % 3 - 1, 30});
     }
 
     while (!quit) {
@@ -121,6 +178,8 @@ int main(int argc, char* argv[]) {
                     case SDLK_DOWN:  downPressed = true; break;
                     case SDLK_LEFT:  leftPressed = true; break;
                     case SDLK_RIGHT: rightPressed = true; break;
+                    case SDLK_SPACE: spacePressed = true; break;
+                    case SDLK_r:     restartGame(); break; // Restart game
                 }
             }
             if (e.type == SDL_KEYUP) {
@@ -129,8 +188,14 @@ int main(int argc, char* argv[]) {
                     case SDLK_DOWN:  downPressed = false; break;
                     case SDLK_LEFT:  leftPressed = false; break;
                     case SDLK_RIGHT: rightPressed = false; break;
+                    case SDLK_SPACE: spacePressed = false; break;
                 }
             }
+        }
+
+        // Ball movement logic
+        if (gameOver) {
+            continue;  // If the game is over, skip the movement logic
         }
 
         ballVelY = 0;
@@ -158,57 +223,78 @@ int main(int argc, char* argv[]) {
         if (ballPosY < 0) ballPosY = 0;
         if (ballPosY + BALL_SIZE > WINDOW_HEIGHT) ballPosY = WINDOW_HEIGHT - BALL_SIZE;
 
-        for (auto& circle : circles) {
-            circle.speed += 0.005f;
-            circle.posX += circle.velX * circle.speed;
-            circle.posY += circle.velY * circle.speed;
-            if (circle.posX < 0 || circle.posX + circle.size > WINDOW_WIDTH) {
-                circle.velX = -circle.velX;
-            }
-            if (circle.posY < 0 || circle.posY + circle.size > WINDOW_HEIGHT) {
-                circle.velY = -circle.velY;
-            }
+        // Fire bullets if space bar is pressed
+        if (spacePressed) {
+            fireBullet();
+        }
 
-            if (checkCollision(ballPosX, ballPosY, BALL_SIZE, circle.posX, circle.posY, circle.size)) {
-                std::cout << "Game Over! You were hit by an asteroid!" << std::endl;
-                quit = true;
-            }
+        // Update bullets
+        for (size_t i = 0; i < bullets.size(); ++i) {
+            bullets[i].y += bullets[i].velY;
 
-            for (auto& otherCircle : circles) {
-                if (&circle != &otherCircle) {
-                    handleCircleCollision(circle, otherCircle);
-                }
+            // Remove bullets that go off the screen
+            if (bullets[i].y < 0 || bullets[i].y > WINDOW_HEIGHT) {
+                bullets.erase(bullets.begin() + i);
+                i--;
             }
         }
 
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // Move asteroids
+        moveAsteroids();
 
-        glColor3f(1.0f, 0.0f, 0.0f);
+        // Check for bullet-asteroid collisions
+        checkBulletCollisions();
+
+        // Check if the player has collided with an asteroid
+        checkGameOver();
+
+        // Render everything
+        glClear(GL_COLOR_BUFFER_BIT);
+        
+        // Rendering player (ship)
+        float normalizedX = (ballPosX / (float)WINDOW_WIDTH) * 2 - 1;
+        float normalizedY = (ballPosY / (float)WINDOW_HEIGHT) * 2 - 1;
+        float normalizedSize = (BALL_SIZE / (float)WINDOW_WIDTH) * 2;
+
         glBegin(GL_QUADS);
-        glVertex2f((ballPosX / (float)WINDOW_WIDTH) * 2 - 1, (ballPosY / (float)WINDOW_HEIGHT) * 2 - 1);
-        glVertex2f(((ballPosX + BALL_SIZE) / (float)WINDOW_WIDTH) * 2 - 1, (ballPosY / (float)WINDOW_HEIGHT) * 2 - 1);
-        glVertex2f(((ballPosX + BALL_SIZE) / (float)WINDOW_WIDTH) * 2 - 1, ((ballPosY + BALL_SIZE) / (float)WINDOW_HEIGHT) * 2 - 1);
-        glVertex2f((ballPosX / (float)WINDOW_WIDTH) * 2 - 1, ((ballPosY + BALL_SIZE) / (float)WINDOW_HEIGHT) * 2 - 1);
+        glVertex2f(normalizedX - normalizedSize, normalizedY - normalizedSize);
+        glVertex2f(normalizedX + normalizedSize, normalizedY - normalizedSize);
+        glVertex2f(normalizedX + normalizedSize, normalizedY + normalizedSize);
+        glVertex2f(normalizedX - normalizedSize, normalizedY + normalizedSize);
         glEnd();
 
-        glColor3f(0.0f, 1.0f, 0.0f);
-        for (const auto& circle : circles) {
+        // Render bullets
+        for (const auto& bullet : bullets) {
+            float bulletX = (bullet.x / (float)WINDOW_WIDTH) * 2 - 1;
+            float bulletY = (bullet.y / (float)WINDOW_HEIGHT) * 2 - 1;
+            float bulletSize = (BULLET_SIZE / (float)WINDOW_WIDTH) * 2;
+
             glBegin(GL_QUADS);
-            glVertex2f((circle.posX / (float)WINDOW_WIDTH) * 2 - 1, (circle.posY / (float)WINDOW_HEIGHT) * 2 - 1);
-            glVertex2f(((circle.posX + circle.size) / (float)WINDOW_WIDTH) * 2 - 1, (circle.posY / (float)WINDOW_HEIGHT) * 2 - 1);
-            glVertex2f(((circle.posX + circle.size) / (float)WINDOW_WIDTH) * 2 - 1, ((circle.posY + circle.size) / (float)WINDOW_HEIGHT) * 2 - 1);
-            glVertex2f((circle.posX / (float)WINDOW_WIDTH) * 2 - 1, ((circle.posY + circle.size) / (float)WINDOW_HEIGHT) * 2 - 1);
+            glVertex2f(bulletX - bulletSize, bulletY - bulletSize);
+            glVertex2f(bulletX + bulletSize, bulletY - bulletSize);
+            glVertex2f(bulletX + bulletSize, bulletY + bulletSize);
+            glVertex2f(bulletX - bulletSize, bulletY + bulletSize);
+            glEnd();
+        }
+
+        // Render asteroids
+        for (const auto& asteroid : asteroids) {
+            float asteroidX = (asteroid.x / (float)WINDOW_WIDTH) * 2 - 1;
+            float asteroidY = (asteroid.y / (float)WINDOW_HEIGHT) * 2 - 1;
+            float asteroidSize = (asteroid.size / (float)WINDOW_WIDTH) * 2;
+
+            glBegin(GL_QUADS);
+            glVertex2f(asteroidX - asteroidSize, asteroidY - asteroidSize);
+            glVertex2f(asteroidX + asteroidSize, asteroidY - asteroidSize);
+            glVertex2f(asteroidX + asteroidSize, asteroidY + asteroidSize);
+            glVertex2f(asteroidX - asteroidSize, asteroidY + asteroidSize);
             glEnd();
         }
 
         SDL_GL_SwapWindow(window);
-        SDL_Delay(16);
     }
 
-    SDL_GL_DeleteContext(glContext);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
     return 0;
 }
