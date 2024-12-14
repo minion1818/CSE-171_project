@@ -24,6 +24,9 @@ bool gameOver = false;
 int lives = 3;
 float asteroidSpeedMultiplier = 1.0f;
 int counter = 0;
+const int HEART_WIDTH = 7;
+const int HEART_HEIGHT = 6;
+const int HEART_SPACING = 20;
 
 // Input States
 bool upPressed = false, downPressed = false, leftPressed = false, rightPressed = false, spacePressed = false;
@@ -59,6 +62,7 @@ std::vector<Asteroid> asteroids;
 SDL_Texture* userTexture = nullptr;
 SDL_Texture* asteroidTexture = nullptr;
 SDL_Texture* bulletTexture = nullptr;
+SDL_Texture* heartTexture = nullptr;
 
 // Function Declarations
 bool checkCollisionAABB(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2);
@@ -277,6 +281,8 @@ SDL_Rect getFiringSpriteSourceRect() {
     return SDL_Rect{ 39, 7, 18, 18 };  // Example firing sprite rectangle
 }
 
+
+
 SDL_Rect getExplosionFrame(int frame) {
     // Define frame-specific properties
     const std::vector<SDL_Rect> frames = {
@@ -299,6 +305,16 @@ void renderExplosions(SDL_Renderer* renderer, SDL_Texture* texture) {
     for (const auto& explosion : explosions) {
         SDL_Rect srcRect = getExplosionFrame(explosion.currentFrame);
         renderTexture(renderer, texture, explosion.x, explosion.y, ASTEROID_SIZE, ASTEROID_SIZE, srcRect);
+    }
+}
+
+void renderLives(SDL_Renderer* renderer, SDL_Texture* heartTexture, int lives) {
+    for (int i = 0; i < lives; i++) {
+        int x = 10 + (i * (HEART_WIDTH + HEART_SPACING)); // Position hearts with spacing
+        int y = WINDOW_HEIGHT - HEART_HEIGHT - 25; // Align hearts to the bottom-left corner
+        SDL_Rect srcRect = { 12, 13, HEART_WIDTH, HEART_HEIGHT }; // Source rectangle for the heart sprite
+        SDL_Rect dstRect = { x, y, HEART_WIDTH * 3, HEART_HEIGHT * 3 }; // Destination rectangle on the screen
+        SDL_RenderCopy(renderer, heartTexture, &srcRect, &dstRect);
     }
 }
 
@@ -338,6 +354,7 @@ int main(int argc, char* argv[]) {
     userTexture = loadTexture(renderer, "ship.png");
     asteroidTexture = loadTexture(renderer, "meteor.png");
     bulletTexture = loadTexture(renderer, "ship.png");
+    heartTexture = loadTexture(renderer, "hearts.png");
 
     spawnAsteroids(5);
 
@@ -390,6 +407,8 @@ int main(int argc, char* argv[]) {
         SDL_Rect shipSrcRect = isFiring ? getFiringSpriteSourceRect() : getShipSourceRect();
         renderTexture(renderer, userTexture, ballPosX, ballPosY, BALL_SIZE, BALL_SIZE, shipSrcRect);
         isFiring = false;
+
+        renderLives(renderer, heartTexture, lives);
 
 
         SDL_RenderPresent(renderer);
