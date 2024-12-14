@@ -16,18 +16,19 @@ const int BULLET_SIZE = 10;
 const int ASTEROID_SIZE = 30;
 const float INITIAL_USER_SPEED = 120.0f;
 const int NEW_ASTEROID_KILL_THRESHOLD = 10;
-const float BULLET_COOLDOWN = 0.5f;
-const float FIXED_TIMESTEP = 1.0f / 60.0f; // 60 updates per second
-
+const float BULLET_COOLDOWN = 0.4f;
+const float FIXED_TIMESTEP = 1.0f / 60.0f;
+bool isFiring = false;
 int asteroidKillCount = 0;
 bool gameOver = false;
 int lives = 3;
 float asteroidSpeedMultiplier = 1.0f;
+int counter = 0;
 
 // Input States
 bool upPressed = false, downPressed = false, leftPressed = false, rightPressed = false, spacePressed = false;
 
-// Player Properties
+// Player Propertiesd
 float ballPosX = WINDOW_WIDTH / 2;
 float ballPosY = WINDOW_HEIGHT / 2;
 float ballVelX = 0, ballVelY = 0;
@@ -44,6 +45,13 @@ struct Asteroid {
     float size;
 };
 
+struct Explosion {
+    float x, y;
+    int currentFrame;
+    float frameTime;  // Time elapsed for the current frame
+};
+
+std::vector<Explosion> explosions;
 std::vector<Bullet> bullets;
 std::vector<Asteroid> asteroids;
 
@@ -88,6 +96,27 @@ void renderTexture(SDL_Renderer* renderer, SDL_Texture* texture, float x, float 
     SDL_RenderCopy(renderer, texture, &srcRect, &dstRect);
 }
 
+void spawnExplosion(float x, float y) {
+    Explosion explosion = { x, y, 0, 0.0f };
+    explosions.push_back(explosion);
+}
+
+void updateExplosions(float deltaTime) {
+    for (auto it = explosions.begin(); it != explosions.end();) {
+        it->frameTime += deltaTime;
+        if (it->frameTime >= 0.1f) { // Assume each frame lasts 0.1 seconds
+            it->frameTime = 0.0f;
+            it->currentFrame++;
+        }
+        if (it->currentFrame >= 6) { // 6 frames in the explosion
+            it = explosions.erase(it);  // Remove finished explosion
+        } else {
+            ++it;
+        }
+    }
+}
+
+
 void handleInput() {
     ballVelX = ballVelY = 0;
     if (upPressed) ballVelY -= INITIAL_USER_SPEED;
@@ -98,6 +127,7 @@ void handleInput() {
     if (spacePressed && SDL_GetTicks() - lastBulletTime > BULLET_COOLDOWN * 1000) {
         spawnBullet();
         lastBulletTime = SDL_GetTicks();
+        isFiring = true;
     }
     if (SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_R]) {
         resetGame();
@@ -137,6 +167,7 @@ void checkBulletCollisions() {
         std::remove_if(bullets.begin(), bullets.end(), [&](Bullet& bullet) {
             for (auto& asteroid : asteroids) {
                 if (checkCollisionAABB(bullet.x, bullet.y, BULLET_SIZE, BULLET_SIZE, asteroid.x, asteroid.y, asteroid.size, asteroid.size)) {
+                    spawnExplosion(asteroid.x, asteroid.y);
                     respawnAsteroid(asteroid);
                     asteroidKillCount++;
                     if(asteroidKillCount == 100){
@@ -170,6 +201,8 @@ void checkGameOver() {
         if (checkCollisionAABB(ballPosX, ballPosY, BALL_SIZE, BALL_SIZE, it->x, it->y, it->size, it->size)) {
             lives--;
             std::cout << "Collision detected! Lives left: " << lives << std::endl;
+
+            spawnExplosion(it->x, it->y);
 
             // Remove the asteroid that hit the player
             it = asteroids.erase(it);
@@ -239,6 +272,37 @@ SDL_Rect getBulletSourceRect() {
 SDL_Rect getMeteorSourceRect() {
     return SDL_Rect{ 41, 10, 13, 12 };  // Example for the meteor's texture
 }
+
+SDL_Rect getFiringSpriteSourceRect() {
+    return SDL_Rect{ 39, 7, 18, 18 };  // Example firing sprite rectangle
+}
+
+SDL_Rect getExplosionFrame(int frame) {
+    // Define frame-specific properties
+    const std::vector<SDL_Rect> frames = {
+        {73, 10, 13, 12},  // Frame 0
+        {9, 42, 13, 12},   // Frame 1
+        {41, 41, 15, 14},  // Frame 2
+        {70, 40, 18, 18},  // Frame 3
+        {8, 76, 13, 11},   // Frame 4
+        {42, 77, 11, 9}    // Frame 5
+    };
+
+    // Ensure the frame is within range
+    if (frame < 0 || frame >= static_cast<int>(frames.size())) {
+        frame = 0; // Default to the first frame if out of range
+    }
+    return frames[frame];
+}
+
+void renderExplosions(SDL_Renderer* renderer, SDL_Texture* texture) {
+    for (const auto& explosion : explosions) {
+        SDL_Rect srcRect = getExplosionFrame(explosion.currentFrame);
+        renderTexture(renderer, texture, explosion.x, explosion.y, ASTEROID_SIZE, ASTEROID_SIZE, srcRect);
+    }
+}
+
+
 
 int main(int argc, char* argv[]) {
     SDL_SetMainReady();
@@ -311,15 +375,22 @@ int main(int argc, char* argv[]) {
 
         SDL_RenderClear(renderer);
 
+        updateExplosions(deltaTime);
+
         for (auto& asteroid : asteroids) {
             renderTexture(renderer, asteroidTexture, asteroid.x, asteroid.y, asteroid.size, asteroid.size, getMeteorSourceRect());
         }
+
+        renderExplosions(renderer, asteroidTexture);
 
         for (auto& bullet : bullets) {
             renderTexture(renderer, bulletTexture, bullet.x, bullet.y, BULLET_SIZE, BULLET_SIZE, getBulletSourceRect());
         }
 
-        renderTexture(renderer, userTexture, ballPosX, ballPosY, BALL_SIZE, BALL_SIZE, getShipSourceRect());
+        SDL_Rect shipSrcRect = isFiring ? getFiringSpriteSourceRect() : getShipSourceRect();
+        renderTexture(renderer, userTexture, ballPosX, ballPosY, BALL_SIZE, BALL_SIZE, shipSrcRect);
+        isFiring = false;
+
 
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
